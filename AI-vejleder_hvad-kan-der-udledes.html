@@ -1,0 +1,353 @@
+<!DOCTYPE html>
+<html lang="da">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>AI‑vejleder: "Hvad kan der udledes" (Samfundsfag A)</title>
+  <!-- Tailwind (CDN build) -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    body { background: linear-gradient(to bottom, #f9fafb, #ffffff); }
+    .card { @apply bg-white rounded-2xl shadow p-4 border border-gray-100; }
+    .btn { @apply inline-flex items-center gap-2 px-3 py-2 rounded-xl text-sm font-medium transition active:scale-95; }
+    .btn-primary { @apply bg-black text-white hover:bg-gray-800; }
+    .btn-ghost { @apply bg-transparent hover:bg-gray-100; }
+    .btn-subtle { @apply bg-gray-100 hover:bg-gray-200; }
+    .btn-danger { @apply bg-red-600 text-white hover:bg-red-700; }
+    .inp { @apply w-full border rounded-xl px-3 py-2 focus:outline-none focus:ring-2 focus:ring-black/60; }
+    .label { @apply text-sm font-medium; }
+  </style>
+  <!-- React UMD + Babel for in-browser JSX (dev-friendly) -->
+  <script crossorigin src="https://unpkg.com/react@18/umd/react.development.js"></script>
+  <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+  <script src="https://unpkg.com/babel-standalone@6/babel.min.js"></script>
+</head>
+<body class="min-h-screen text-gray-900">
+  <div id="root" class="max-w-5xl mx-auto p-4 md:p-8"></div>
+
+  <script type="text/babel">
+const {useState, useMemo, useEffect} = React;
+
+const defaultBilag = [
+  { id: "B1-fig1", title: "B1 – Figur 1: Andel gifte 18–32-årige (dansk vs. ikke‑vestlig)", yearRange: "1994–2018", unit: "procent", hints: [
+    "Skriv en tidsserie-udledning (retning + størrelse)",
+    "Sammenlign grupper (dansk vs. ikke‑vestlig)",
+    "Angiv mindst ét konkret tal (år + værdi)"
+  ]},
+  { id: "B1-fig2", title: "B1 – Figur 2: Gennemsnitlig uddannelseslængde 29–32‑årige (køn × oprindelse)", yearRange: "1994–2018", unit: "år", hints: [
+    "Sammenlign køn inden for samme oprindelse",
+    "Sammenlign oprindelse inden for samme køn",
+    "Beskriv udvikling og evt. konvergens/divergens"
+  ]},
+  { id: "B1-fig3", title: "B1 – Figur 3: Andel i beskæftigelse/uddannelse før/efter ægteskab (køn × ægtefælles oprindelse)", yearRange: "-5 til +10 år ift. vielse", unit: "procent", hints: [
+    "Beskriv mønster før vs. efter ægteskab",
+    "Sammenlign på tværs af ægtefælletyper",
+    "Bemærk forskelle mellem mænd og kvinder"
+  ]},
+  { id: "B1-fig4", title: "B1 – Figur 4: Opbakning til ligestilling (køn × etnisk baggrund)", yearRange: "2019–2020", unit: "0–100 skala", hints: [
+    "Sammenlign niveauer (høj/lav) på tværs af grupper",
+    "Bemærk aldersgruppen 18–29 særskilt",
+    "Undgå årsagsforklaringer – hold dig til hvad der fremgår"
+  ]},
+  { id: "B2", title: "B2 – Interviewuddrag (kvalitativ empiri)", yearRange: "Kvalitative interview", unit: "citater/temaer", hints: [
+    "Identificér mønstre/temaer (fx karriere vs. husmorrolle, ægteskabsvalg)",
+    "Underbyg med kort citat (1–2 linjer) og fortolk på udlednings‑niveau",
+    "Husk at kvalitative data ikke er repræsentative i sig selv"
+  ]}
+];
+
+const defaultMethodFlags = [
+  { key: "register", text: "Registerdata øger validitet for tal (måler faktisk adfærd fremfor selvrapport)", appliesTo: ["B1-fig1","B1-fig2","B1-fig3"] },
+  { key: "vaegtning", text: "Vægtede surveydata (B1‑fig4) mindsker skævheder men afhænger af spørgemetode", appliesTo: ["B1-fig4"] },
+  { key: "tid", text: "Lange tidsserier muliggør udviklingsudledninger (B1‑fig1/2)", appliesTo: ["B1-fig1","B1-fig2"] },
+  { key: "kausalitet", text: "Figurer viser sammenfald/korrelation – ikke kausalitet (særligt B1‑fig3)", appliesTo: ["B1-fig3","B1-fig1","B1-fig2","B1-fig4"] },
+  { key: "udvalg", text: "Kvalitativt udvalg i B2 giver dybde, men ikke generaliserbarhed", appliesTo: ["B2"] },
+  { key: "definition", text: "Vær præcis om målgrupper (18–32, 29–32, 18–42; ikke‑vestlig, efterkommere/indvandrere)", appliesTo: ["B1-fig1","B1-fig2","B1-fig3","B1-fig4"] },
+  { key: "maaleenhed", text: "Angiv altid måleenhed (procent, år, skala 0–100)", appliesTo: ["B1-fig1","B1-fig2","B1-fig3","B1-fig4"] },
+];
+
+function sentenceFromFields(s) {
+  const { subject, group, period, direction, magnitude, unit, reference, compareGroup } = s;
+  if (!subject && !group) return "";
+  let parts = [];
+  if (subject) parts.push(subject);
+  if (group) parts.push(`for ${group}`);
+  if (period) parts.push(`i perioden ${period}`);
+  if (direction && magnitude) parts.push(`er ${direction} med ca. ${magnitude}${unit ? ` ${unit}` : ""}`);
+  if (reference) parts.push(`(fx ${reference})`);
+  if (compareGroup) parts.push(`og ligger ${s.compareRelation || "lavere end"} ${compareGroup}`);
+  return parts.join(" ") + ".";
+}
+
+const starterKits = [
+  "Data viser … (angiv retning og størrelse, undgå forklaring)",
+  "I perioden … er andelen/gennemsnittet … (tal + enhed)",
+  "Sammenlignet med … er niveauet … (angiv forskel/afstand)",
+  "Før vs. efter (B1‑fig3): niveauet ændrer sig … (beskriv mønster, ikke årsag)",
+];
+
+function App() {
+  const [bilag, setBilag] = useState(defaultBilag);
+  const [active, setActive] = useState(defaultBilag[0].id);
+  const [notes, setNotes] = useState({});
+  const [sentences, setSentences] = useState({});
+  const [method, setMethod] = useState({});
+  const [strictMode, setStrictMode] = useState(true);
+
+  useEffect(() => {
+    const saved = localStorage.getItem("hvorkan-udledes-state");
+    if (saved) {
+      try { const s = JSON.parse(saved);
+        setNotes(s.notes||{}); setSentences(s.sentences||{});
+        setMethod(s.method||{}); setActive(s.active||bilag[0].id);
+        setStrictMode(s.strictMode ?? true);
+      } catch {}
+    }
+  }, []);
+  useEffect(() => {
+    localStorage.setItem("hvorkan-udledes-state", JSON.stringify({ notes, sentences, method, active, strictMode }));
+  }, [notes, sentences, method, active, strictMode]);
+
+  const current = bilag.find(b => b.id === active);
+
+  const addSentence = () => {
+    const list = sentences[active] || [];
+    const blank = { subject: "", group: "", period: current?.yearRange || "", direction: "steget", magnitude: "", unit: current?.unit || "", reference: "", compareGroup: "", compareRelation: "højere end" };
+    setSentences({ ...sentences, [active]: [...list, blank] });
+  };
+  const removeSentence = (idx) => {
+    const list = sentences[active] || [];
+    list.splice(idx,1);
+    setSentences({ ...sentences, [active]: [...list] });
+  };
+  function updateField(idx, key, value) {
+    const arr = [...(sentences[active]||[])];
+    arr[idx] = { ...arr[idx], [key]: value };
+    setSentences({ ...sentences, [active]: arr });
+  }
+
+  const generatedText = useMemo(() => {
+    const blocks = bilag.map(b => {
+      const sents = (sentences[b.id]||[]).map(sentenceFromFields).filter(Boolean);
+      const note = (notes[b.id]||"").trim();
+      if (sents.length===0 && !note) return null;
+      let title = `\\n${b.title}\\n` + "-".repeat(b.title.length);
+      let body = sents.map(s => `• ${s}`).join("\\n");
+      if (note) body += (body?"\\n\\n":"") + `Bemærkning: ${note}`;
+      return title+"\\n"+body;
+    }).filter(Boolean);
+
+    const picked = Object.entries(method).filter(([k,v])=>v).map(([k])=>defaultMethodFlags.find(f=>f.key===k)?.text).filter(Boolean);
+    if (picked.length) {
+      blocks.push("\\nMetodiske styrker/svagheder\\n---------------------------\\n" + picked.map(t=>`• ${t}`).join("\\n"));
+    }
+    return blocks.join("\\n\\n");
+  }, [sentences, notes, method, bilag]);
+
+  const warnings = useMemo(()=>{
+    const w = [];
+    bilag.forEach(b=>{
+      (sentences[b.id]||[]).forEach((s, i)=>{
+        if (strictMode) {
+          if (!s.magnitude && !/\\d/.test(s.reference||"")) {
+            w.push({ type:"number", msg:`${b.title}: Sætning ${i+1} mangler konkret tal (magnitude eller reference).`});
+          }
+          if (!s.unit) {
+            w.push({ type:"unit", msg:`${b.title}: Sætning ${i+1} mangler måleenhed.`});
+          }
+          if (!s.period) {
+            w.push({ type:"period", msg:`${b.title}: Sætning ${i+1} mangler periode/år.`});
+          }
+        }
+        const text = Object.values(s).join(" ").toLowerCase();
+        if (/(fordi|på grund af|derfor|skyldes)/.test(text)) {
+          w.push({ type:"causality", msg:`${b.title}: Sætning ${i+1} lyder kausal – omformulér til udledning/observation.`});
+        }
+      });
+    });
+    return w;
+  }, [sentences, bilag, strictMode]);
+
+  const downloadTxt = () => {
+    const blob = new Blob([generatedText], { type: "text/plain;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url; a.download = "hvad-kan-der-udledes-udkast.txt"; a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  const resetAll = () => {
+    if (!confirm("Nulstil alt indhold?")) return;
+    setNotes({}); setSentences({}); setMethod({});
+  };
+
+  return (
+    <div>
+      <header className="flex items-start justify-between gap-4 mb-6">
+        <div>
+          <h1 className="text-3xl md:text-4xl font-semibold">AI‑vejleder: "Hvad kan der udledes"</h1>
+          <p className="text-gray-600 mt-1">Træn den skriftlige genre til Samfundsfag A med struktur, tjeklister og sætningstemplater.</p>
+        </div>
+        <div className="flex gap-2">
+          <button className="btn btn-subtle" onClick={()=>location.reload()}>↻ Opdatér</button>
+          <button className="btn btn-ghost" onClick={resetAll}>🗑️ Nulstil</button>
+          <button className="btn btn-primary" onClick={downloadTxt}>⬇️ Hent tekst</button>
+        </div>
+      </header>
+
+      <div className="card mb-6">
+        <div className="grid md:grid-cols-3 gap-4">
+          <div className="md:col-span-2">
+            <h2 className="text-2xl font-semibold mb-1">1) Genreforventninger</h2>
+            <p className="text-sm text-gray-600 mb-4">Sådan bedømmes udledninger i samfundsfag – fokuspunkter, du skal ramme.</p>
+            <ul className="grid sm:grid-cols-2 gap-2 text-sm">
+              {[
+                "Beskriv hvad materialet viser – ikke hvorfor.",
+                "Konkrete tal + enheder + årstal.",
+                "Sammenlign relevante grupper (køn/oprindelse/alder).",
+                "Udvikling over tid: retning og størrelse.",
+                "Hold fagligt sprog og klare fagbegreber (andel, niveau, gennemsnit).",
+                "Metodeafsnit: styrker/svagheder ved B1/B2."
+              ].map((item,i)=> (
+                <li key={i} className="flex items-start gap-2">✅<span>{item}</span></li>
+              ))}
+            </ul>
+            <div className="mt-2">
+              <label className="flex items-center gap-3 cursor-pointer select-none text-sm">
+                <div
+                  className={"w-10 h-6 rounded-full p-1 transition " + (strictMode ? "bg-black" : "bg-gray-300")}
+                  onClick={() => setStrictMode(!strictMode)}
+                >
+                  <div className={"h-4 w-4 bg-white rounded-full transition " + (strictMode ? "translate-x-4" : "translate-x-0")} />
+                </div>
+                <span>Streng tjek (kræv tal, enheder og år)</span>
+              </label>
+            </div>
+          </div>
+          <div>
+            <h2 className="text-2xl font-semibold mb-1">Sætningstartere</h2>
+            <div className="grid gap-2">
+              {starterKits.map((s, i)=> (
+                <div key={i} className="text-sm bg-gray-100 rounded-xl px-3 py-2">{s}</div>
+              ))}
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div className="grid md:grid-cols-12 gap-4">
+        <div className="md:col-span-4">
+          <div className="card">
+            <h3 className="text-lg font-semibold mb-3">Bilag</h3>
+            <div className="grid gap-2">
+              {bilag.map(b => (
+                <button key={b.id} onClick={()=>setActive(b.id)} className={"text-left px-3 py-2 rounded-xl border " + (active===b.id?"border-black bg-gray-50":"border-gray-200 hover:bg-gray-50")}>
+                  <div className="font-medium">{b.title}</div>
+                  <div className="text-xs text-gray-500">{b.yearRange} • Enhed: {b.unit}</div>
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div className="card mt-4">
+            <h3 className="text-lg font-semibold mb-3">Metode – styrker/svagheder</h3>
+            <div className="grid gap-2 text-sm">
+              {defaultMethodFlags.filter(f=>f.appliesTo.includes(active)).map(f => (
+                <label key={f.key} className="flex items-start gap-2">
+                  <input type="checkbox" className="mt-1" checked={!!method[f.key]} onChange={e=>setMethod({...method, [f.key]: e.target.checked})} />
+                  <span>{f.text}</span>
+                </label>
+              ))}
+            </div>
+          </div>
+        </div>
+
+        <div className="md:col-span-8">
+          <div className="card">
+            <div className="flex items-center justify-between mb-2">
+              <div>
+                <h3 className="text-lg font-semibold">Arbejd med: <span className="font-normal">{current.title}</span></h3>
+                <p className="text-xs text-gray-500">Husk at skrive i udlednings-genren: beskriv, mål, sammenlign – ingen årsager.</p>
+              </div>
+              <div className="flex gap-2">
+                <button className="btn btn-subtle" onClick={addSentence}>＋ Tilføj sætning</button>
+              </div>
+            </div>
+
+            <div className="grid gap-3">
+              {(sentences[active]||[]).map((s, idx)=> (
+                <div key={idx} className="border rounded-xl p-3">
+                  <div className="flex items-center justify-between mb-2">
+                    <div className="text-sm font-medium">Sætning {idx+1}</div>
+                    <button className="btn btn-ghost" onClick={()=>removeSentence(idx)}>🗑️ Fjern</button>
+                  </div>
+                  <div className="grid md:grid-cols-2 gap-3">
+                    <label className="grid gap-1"><span className="label">Emne (andel/gennemsnit/opbakning…)</span><input className="inp" value={s.subject} onChange={e=>updateField(idx,"subject",e.target.value)} /></label>
+                    <label className="grid gap-1"><span className="label">Gruppe (fx ikke‑vestlig, kvinder 29–32)</span><input className="inp" value={s.group} onChange={e=>updateField(idx,"group",e.target.value)} /></label>
+                    <label className="grid gap-1"><span className="label">Periode/år</span><input className="inp" value={s.period} onChange={e=>updateField(idx,"period",e.target.value)} /></label>
+                    <div className="grid grid-cols-3 gap-2">
+                      <label className="grid gap-1"><span className="label">Retning</span>
+                        <select className="inp" value={s.direction} onChange={e=>updateField(idx,"direction",e.target.value)}>
+                          <option>steget</option><option>faldet</option><option>stabil</option><option>højere</option><option>lavere</option>
+                        </select>
+                      </label>
+                      <label className="grid gap-1"><span className="label">Størrelse</span><input className="inp" placeholder="fx 8,5" value={s.magnitude} onChange={e=>updateField(idx,"magnitude",e.target.value)} /></label>
+                      <label className="grid gap-1"><span className="label">Enhed</span><input className="inp" placeholder={current.unit} value={s.unit} onChange={e=>updateField(idx,"unit",e.target.value)} /></label>
+                    </div>
+                    <label className="grid gap-1 md:col-span-2"><span className="label">Konkrete tal/år i parentes</span><input className="inp" placeholder="fx 2000: 12 %, 2018: 23 %" value={s.reference} onChange={e=>updateField(idx,"reference",e.target.value)} /></label>
+                    <div className="grid grid-cols-2 gap-2 md:col-span-2">
+                      <label className="grid gap-1"><span className="label">Sammenlign med gruppe</span><input className="inp" placeholder="fx dansk oprindelse" value={s.compareGroup} onChange={e=>updateField(idx,"compareGroup",e.target.value)} /></label>
+                      <label className="grid gap-1"><span className="label">Relation</span>
+                        <select className="inp" value={s.compareRelation||"højere end"} onChange={e=>updateField(idx,"compareRelation",e.target.value)}>
+                          <option>højere end</option><option>lavere end</option><option>på niveau med</option>
+                        </select>
+                      </label>
+                    </div>
+                    <label className="grid gap-1 md:col-span-2"><span className="label">AI‑hjælp: forslag</span><textarea className="inp" rows="2" readOnly value={sentenceFromFields(s)} /></label>
+                  </div>
+                </div>
+              ))}
+
+              {!(sentences[active]||[]).length && (
+                <div className="text-sm text-gray-600">ℹ️ Ingen sætninger endnu. Tryk "Tilføj sætning" for at komme i gang.</div>
+              )}
+
+              <label className="grid gap-1"><span className="label">Bemærkninger (til dette bilag)</span>
+                <textarea className="inp" rows="3" placeholder="Fx særlige mønstre, usikkerheder, outliers…" value={notes[active]||""} onChange={e=>setNotes({...notes, [active]: e.target.value})}></textarea>
+              </label>
+            </div>
+          </div>
+
+          <div className="card mt-4">
+            <h3 className="text-lg font-semibold mb-2">Advarsler og kvalitetstjek</h3>
+            {warnings.length ? (
+              <ul className="grid gap-2 text-sm">
+                {warnings.map((w,i)=> (<li key={i} className="flex items-start gap-2">⚠️<span>{w.msg}</span></li>))}
+              </ul>
+            ) : (
+              <div className="text-sm text-green-700">✅ Ser godt ud – ingen kritikpunkter fundet.</div>
+            )}
+          </div>
+
+          <div className="card mt-4">
+            <h3 className="text-lg font-semibold mb-2">Udkast til afsnit (kopiér til din aflevering)</h3>
+            <textarea className="inp" rows="12" readOnly value={generatedText}></textarea>
+            <div className="flex gap-2 mt-2">
+              <button className="btn btn-primary" onClick={downloadTxt}>⬇️ Download som .txt</button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <footer className="text-xs text-gray-500 mt-8">
+        <p>Tip: Hold dig til udledninger (observationer). Gem forklaringer og teorier til andre genreopgaver.</p>
+      </footer>
+    </div>
+  );
+}
+
+const root = ReactDOM.createRoot(document.getElementById("root"));
+root.render(<App />);
+  </script>
+</body>
+</html>
